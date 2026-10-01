@@ -1,0 +1,63 @@
+# Render Blueprint: backend only. The frontend deploys to Vercel.
+# Database is external (Supabase). Set secrets in the Render dashboard (sync: false).
+envVarGroups:
+  - name: creatorops-shared
+    envVars:
+      - { key: ENV, value: production }
+      - { key: SECRET_KEY, sync: false }
+      - { key: CLIENT_DOMAIN, sync: false }          # the Vercel URL
+      - { key: DATABASE_URL, sync: false }           # Supabase session-mode pooler or direct, sslmode=require
+      - { key: GOOGLE_OAUTH_CLIENT_ID, sync: false }
+      - { key: GOOGLE_OAUTH_CLIENT_SECRET, sync: false }
+      - { key: GOOGLE_REDIRECT_URI, sync: false }
+      - { key: LLM_PROVIDER, value: google_genai }
+      - { key: LLM_MODEL, value: gemini-2.5-flash-lite }
+      - { key: GEMINI_API_KEY, sync: false }
+      - { key: RESEND_API_KEY, sync: false }
+      - { key: CLOUDINARY_URL, sync: false }
+      - { key: VIDEO_GEN_ENABLED, value: "false" }
+
+services:
+  - type: web
+    name: creatorops-api
+    runtime: docker
+    dockerfilePath: ./backend/Dockerfile
+    dockerContext: ./backend
+    plan: starter
+    healthCheckPath: /health
+    preDeployCommand: alembic upgrade head
+    envVars:
+      - fromGroup: creatorops-shared
+      - key: REDIS_URL
+        fromService: { type: keyvalue, name: creatorops-redis, property: connectionString }
+
+  - type: worker
+    name: creatorops-worker
+    runtime: docker
+    dockerfilePath: ./backend/Dockerfile
+    dockerContext: ./backend
+    plan: starter  # not free: spin-down would kill in-flight video jobs
+    dockerCommand: celery -A app.tasks:celery_app worker --loglevel=info --concurrency=2
+    envVars:
+      - fromGroup: creatorops-shared
+      - key: REDIS_URL
+        fromService: { type: keyvalue, name: creatorops-redis, property: connectionString }
+
+  - type: worker
+    name: creatorops-beat
+    runtime: docker
+    dockerfilePath: ./backend/Dockerfile
+    dockerContext: ./backend
+    plan: starter
+    numInstances: 1  # never scale: scheduled jobs would fire twice
+    dockerCommand: celery -A app.tasks:celery_app beat --loglevel=info
+    envVars:
+      - fromGroup: creatorops-shared
+      - key: REDIS_URL
+        fromService: { type: keyvalue, name: creatorops-redis, property: connectionString }
+
+  - type: keyvalue
+    name: creatorops-redis
+    plan: starter
+    maxmemoryPolicy: noeviction  # a task queue must not evict jobs
+    ipAllowList: []              # private network only

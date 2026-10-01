@@ -1,0 +1,29 @@
+# Direct dependencies only. Provider packages are optional extras: install the ones you use.
+fastapi
+email-validator
+httpx
+PyJWT
+google-auth
+requests
+uvicorn[standard]
+pydantic>=2.12
+pydantic-settings
+python-dotenv
+PyYAML
+aiohttp
+sqlalchemy>=2
+alembic
+psycopg[binary]
+celery
+redis
+resend
+cloudinary
+cryptography
+langchain>=1.2
+langchain-core
+langgraph>=1.0
+langsmith
+pytest
+# Gemini adapters (default provider)
+langchain-google-genai
+google-genai

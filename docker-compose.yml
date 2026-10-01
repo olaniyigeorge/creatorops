@@ -1,0 +1,50 @@
+# Local development only. Production runs as separate Render services (see render.yaml).
+x-backend: &backend
+  build: ./backend
+  env_file:
+    - path: ./backend/.env
+      required: false
+  environment: &backend-env
+    DATABASE_URL: postgresql+psycopg://creatorops:creatorops@db:5432/creatorops
+    REDIS_URL: redis://redis:6379/0
+  volumes:
+    - ./backend:/app
+  depends_on:
+    db: { condition: service_healthy }
+    redis: { condition: service_started }
+
+services:
+  db:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: creatorops
+      POSTGRES_PASSWORD: creatorops
+      POSTGRES_DB: creatorops
+    ports: ["5432:5432"]
+    volumes: [pgdata:/var/lib/postgresql/data]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U creatorops"]
+      interval: 3s
+      retries: 10
+
+  redis:
+    image: redis:7
+    ports: ["6379:6379"]
+
+  api:
+    <<: *backend
+    command: sh -c "alembic upgrade head && uvicorn app.api.main:app --host 0.0.0.0 --port 8000 --reload"
+    ports: ["8000:8000"]
+
+  worker:
+    <<: *backend
+    command: celery -A app.tasks:celery_app worker --loglevel=info --concurrency=2
+
+  beat:  # exactly one instance, always
+    <<: *backend
+    command: celery -A app.tasks:celery_app beat --loglevel=info
+
+  # frontend: added with the Next.js app (runs on Vercel in production)
+
+volumes:
+  pgdata:
