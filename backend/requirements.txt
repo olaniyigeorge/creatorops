@@ -21,7 +21,6 @@ cloudinary
 cryptography
 langchain>=1.2
 langchain-core
-langgraph>=1.0
 langsmith
 pytest
 # Gemini adapters (default provider)

@@ -24,7 +24,7 @@ def _run(db, ws):
 
 def _action(db, ws):
     return WorkspaceRepo(db, m.Action, ws.id).add(
-        run_id=_run(db, ws).id, type="research", summary="s"
+        run_id=_run(db, ws).id, step_key="s", status="executed", type="research", summary="s"
     )
 
 
@@ -57,6 +57,9 @@ FACTORIES = {
     ),
     m.Asset: lambda db, ws: WorkspaceRepo(db, m.Asset, ws.id).add(
         kind="video", public_id="p", source="ai"
+    ),
+    m.Notification: lambda db, ws: WorkspaceRepo(db, m.Notification, ws.id).add(
+        user_id=make_user(db).id, kind="approval_needed", title="t"
     ),
     m.MemoryItem: lambda db, ws: WorkspaceRepo(db, m.MemoryItem, ws.id).add(
         kind="preference", text="t"

@@ -9,9 +9,9 @@ Project Objectives & Scope
 Primary Objectives
 The project aims to automate key YouTube marketing operations, improve content planning and execution, reduce creator workload, provide strategic recommendations, and coordinate content production workflows through a configurable AI system.
 Scope of the System
-The system includes content strategy generation (with niche and competitor research), creative asset generation, editor coordination, publishing support, analytics feedback loops, and configurable AI autonomy. It supports the full operational flow around YouTube content management while allowing the level of automation to be adjusted based on user preference and trust.
+The system includes content strategy generation (with niche and competitor research), creative asset generation, optional admin-triggered AI draft video generation (budget-capped and disabled by default), editor coordination, publishing support, analytics feedback loops, and configurable AI autonomy. It supports the full operational flow around YouTube content management while allowing the level of automation to be adjusted based on user preference and trust.
 Out of Scope
-Video editing and full AI video generation
+Video editing: human editors remain responsible for final cuts (optional AI-generated draft video is in scope, see below)
 Paid advertising and media buying management
 Complete community management (beyond suggested comment copy)
 System Overview
@@ -53,19 +53,19 @@ Backend
 FastAPI
 Links all systems to the frontend, managing requests and responses
 Database
-PostgreSQL
+PostgreSQL (Supabase)
 Persistence layer for system-generated, user-provided, and channel-specific data
 AI Framework
-Pydantic AI
-Layer where the AI agents operate together to perform marketing operations
+LangChain with Pydantic
+Layer where the AI agents operate together to perform marketing operations; model-agnostic, with Gemini as the first provider
 Background Jobs
 Celery + Redis
 Keeps agents active and performing tasks without requiring admin intervention
 Storage
-Cloud Storage
-Secure storage for generated assets (images, thumbnails, and related media)
+Cloudinary
+Secure storage for generated assets (images, thumbnails, video, and related media)
 Deployment
-Cloud Infrastructure
+Render (backend and workers) and Vercel (frontend)
 Manages packaging, delivery, and deployment for admins, editors, and agents
 
 Multi-tenant design: the system is built from the ground up to support multiple users and admins managing multiple channels. Each channel is represented as an isolated workspace, containing its own channel information, brand assets, preferences, AI memory, and historical decisions, so the agent's learning and context for one channel never bleeds into another.
@@ -75,7 +75,7 @@ A key differentiator of this system is its configurable AI autonomy setting, pai
 Configurable autonomy levels let the admin set how much decision-making the agents are allowed to carry out independently, across three tiers of increasing trust. A subsystem rates every agent action and compares it against the admin's chosen autonomy level; if the action clears the relevant threshold, it proceeds autonomously, otherwise it escalates to the admin for approval.
 Low Autonomy: human approval is required for most actions while the admin builds trust in the system. The admin reviews every judgment call and marks it approved or not; where not approved, the agent requests guidance to learn the admin's preferences.
 Medium Autonomy: the AI executes routine actions with approval checkpoints. Higher-stakes decisions, publishing a video, setting the content calendar, niche/strategy selection — are escalated to the admin for approval before being finalized.
-High Autonomy: the AI executes approved workflows independently, making the best available decisions based on research and context. The admin can provide additional insight, direction, or nudges after the fact, which the agent incorporates going forward.
+High Autonomy: the AI executes approved workflows independently, making the best available decisions based on research and context. The admin can provide additional insight, direction, or nudges after the fact, which the agent incorporates going forward. Safeguards remain at this level: the first three publishes in every workspace still require admin approval, and AI video generation is always limited by the workspace's monthly budget.
 Guardrail system: a built-in subsystem rates all agent responses against configurable rubrics, ensuring generated content is consistent with the channel's brand and adheres to YouTube's content quality guidelines. Review follows a scaled approval workflow, including a retry mechanism for content that doesn't meet the usability threshold, and human escalation governed by the active autonomy setting.
 Implementation Plan
 The project will be delivered in three incremental phases, allowing core functionality to be validated before introducing higher levels of automation and autonomous decision-making.
@@ -89,7 +89,7 @@ Editorial workflow for assigning and reviewing content
 Calendar integration for content planning and scheduling
 Approval system with configurable AI autonomy levels
 Outcome: users can onboard, connect their workspace, receive an AI-generated content strategy, collaborate with editors, and manage approvals within a structured workflow.
-Phase 3: Automation
+Phase 2: Automation
  Introduces external integrations and workflow automation to reduce manual effort.
 YouTube Data API integration
 Analytics integration and performance reporting
@@ -127,7 +127,7 @@ External Integrations with the YouTube Data API, email providers, analytics plat
 Technical Documentation covering system architecture, setup, deployment, extension points, and operational handover.
 Production Deployment of the complete solution in a configured environment, ready for client use.
 Success Metrics
-Content Planning Approval Rate: a high percentage of AI-generated content plans are approved with minimal revisions.
+Content Planning Approval Rate: at least 70% of AI-generated content plans are approved with minimal revisions (proposed target, to be confirmed with the client).
 Reduction in Manual Coordination: significant reduction in manual communication and administrative effort required to manage content production.
 Asset Approval Rate: at least 80% of AI-generated creative assets (titles, descriptions, thumbnails) are approved without major modification.
 Workflow Completion Rate:the agent successfully completes at least 80% of initiated workflows without requiring manual intervention.

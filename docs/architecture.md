@@ -1,13 +1,13 @@
 # CreatorOps Architecture & Implementation Plan
 
-Merges the original **YTA** prototype (LangGraph niche agent, YouTube API helpers, Veo video generation) into the **CreatorOps** product described in `docs/creatorops.md`: an AI marketing-operations manager for YouTube channels, with configurable autonomy.
+Merges the original **YTA** prototype (LangChain niche agent, YouTube API helpers, Veo video generation) into the **CreatorOps** product described in `docs/creatorops.md`: an AI marketing-operations manager for YouTube channels, with configurable autonomy.
 
 ## 1. Decisions
 
 | Topic | Decision |
 |---|---|
 | Product shape | CreatorOps. The AI coordinates humans (Owner, Editors) and escalates by default; full automation is the High-autonomy mode. |
-| Agent framework | **LangChain** agents and chains with **Pydantic** schemas for all inputs and outputs (`with_structured_output`). LangGraph is kept only where a multi-step workflow needs it. |
+| Agent framework | **LangChain** agents and chains with **Pydantic** schemas for all inputs and outputs (`with_structured_output`). Workflows are our own small re-entrant runner on Celery and Postgres (section 2.2 and `app/workflows/context.py`); LangGraph is not used, because pausing for days on a human approval is simpler to make durable in our own tables. |
 | Model agnostic | Agents get models only from `app/llm/factory.py` (`init_chat_model`). Provider and model are config (`LLM_PROVIDER`, `LLM_MODEL`). Gemini is the first and default adapter. |
 | Video generation | **In scope, optional.** Pluggable `VideoProvider` contract, Gemini Veo as the first adapter. Off by default (`VIDEO_GEN_ENABLED`), gated by workspace setting and budget. |
 | Escalation | Editors still receive briefs. When video gen is enabled, the agent can *propose* an AI video to the Owner, who triggers it. Below High autonomy, generation always needs an admin click. |
@@ -107,32 +107,35 @@ Asset(id, workspace_id, kind, storage_url, source('ai'|'editor'), metadata_json)
 MemoryItem(...)  Notification(...)  EmailThread(id, workspace_id, gmail_thread_id, ...)
 ```
 
-## 4. Repository layout (current state after this restructure)
+## 4. Repository layout (current)
 
 ```
 backend/
   app/
     core/         config.py (Settings), logging.py
-    db/           base.py, models.py, repo.py (WorkspaceRepo), session.py   [done]
-    auth/         security.py (sessions, invitation tokens), google.py       [done]
-    api/          main.py, deps.py, auth_routes.py, workspace_routes.py       [done]
-    tasks/        Celery app, runner.py (persisted workflow runs)             [done]
-  migrations/     Alembic (initial schema)                                    [done]
-    llm/          factory.py              model-agnostic chat models  [done]
-    video/        base.py, registry.py, gemini_veo.py                 [done]
-    gate/         autonomy.py [done], guardrails.py [done]
-    agents/       niche.py [ported]; strategy, creative, pm, comms, publishing, analytics [todo]
-    integrations/ youtube.py [moved]; email.py, gmail.py, calendar.py, storage.py (Cloudinary) [todo]
-    schemas/      states.py (original YTA models; split per module as they are used)
-    workflows/    legacy_graph.py (original demo); lifecycle workflows [todo]
-    prompts/      prompts.yaml
-  tests/          test_gate.py, test_video_registry.py
-  scratch/        original experiments (legacy_main.py, langchain/langgraph demos)
-frontend/         Next.js PWA [todo]
+    db/           base.py, models.py, repo.py (WorkspaceRepo), session.py
+    auth/         security.py (sessions, invitation tokens), google.py
+    api/          main.py, deps.py, schemas.py; routes: auth, workspaces, runs, approvals,
+                  notifications, onboarding, calendar
+    llm/          factory.py                 model-agnostic chat models
+    memory/       service.py                 per-workspace recall + prompt context
+    gate/         autonomy.py, guardrails.py
+    agents/       strategy.py, creative.py   (pm, comms, publishing, analytics: later phases)
+    workflows/    context.py (gate execution, re-entrant steps), strategy_flow.py, creative_flow.py
+    tasks/        Celery app, runner.py (claim, run, park, resume), dispatch.py, email_tasks.py
+    comms/        notify.py                  escalation notices
+    integrations/ youtube.py (market signals), email.py (Resend), storage.py (Cloudinary)
+    image/        base.py, gemini_imagen.py  thumbnails (optional, pluggable)
+    video/        base.py, registry.py, gemini_veo.py   AI video (optional, pluggable)
+    schemas/      profile.py, strategy.py (live); states.py (original prototype models, kept for Phase 2 analytics/publishing)
+  migrations/     Alembic (3 revisions)
+  scripts/        setup_local_db.sh
+  tests/          unit + HTTP end-to-end; shared fixtures in conftest.py, fake chat models in fakes.py
+frontend/         Next.js app (App Router, TypeScript); /api proxied to the backend
 docs/             creatorops.md (proposal), architecture.md (this file)
+docker-compose.yml  Redis, API, worker, beat (local only; no database, see section 10)
+render.yaml         production blueprint (backend only)
 ```
-
-Known leftovers: `templates/index.html` and `feedbacks.json` at the repo root are from the prototype and unused by the new structure. Delete them once confirmed. The README still describes the old YTA and should be rewritten after Phase 1.
 
 ## 5. Implementation plan
 
@@ -141,7 +144,7 @@ Phases match the proposal (note its second "Phase 3" is a typo for Phase 2).
 ### Milestone 0: Foundation (done in this restructure)
 - [x] Repo restructure, pycache untracked, `.gitignore` updated, lean `backend/requirements.txt`
 - [x] Settings, model-agnostic LLM factory (Gemini default)
-- [x] Niche agent on structured output (also fixes a prototype bug where `llm_candidates` was not a field and was silently dropped)
+- [x] Niche agent on structured output (also fixed a prototype bug where `llm_candidates` was not a field and was silently dropped); superseded by the Strategy agent in M3 and removed
 - [x] `VideoProvider` contract, registry, Gemini Veo adapter
 - [x] Autonomy gate (pure logic, tested), guardrail judge
 
@@ -165,20 +168,36 @@ Phases match the proposal (note its second "Phase 3" is a typo for Phase 2).
 
 Auth design notes: sessions are a signed JWT in an httpOnly, `SameSite=Lax` cookie, which is the CSRF defence and relies on the frontend proxying `/api` through Next.js so calls stay same-site. Non-members get 404, not 403, so workspace existence is not revealed. Only the owner can change settings; spend and publish counters are not client-settable.
 
-Running tests: `pytest` uses in-memory SQLite; `TEST_DATABASE_URL=postgresql+psycopg://... pytest` runs the same suite on Postgres.
+Running tests: `pytest` uses in-memory SQLite; `TEST_DATABASE_URL=postgresql+psycopg://.../creatorops_test pytest` runs the same suite on Postgres. **The suite drops all tables**, so the database name must contain `test` (enforced; it aborts otherwise).
 
-**M2. Gate and approvals end-to-end (week 2-3)**
-- `Action`/`Approval` persistence; `gate.execute(action)` wrapper that runs guardrails, decides, and either runs, retries, or creates an Approval and pauses the Run
-- Resume-on-decision: approval API resumes the paused Run; decisions written to `MemoryItem`
-- Notification service (in-app) and Resend emails with signed approve/reject links
-- *Done when:* the same action proceeds or escalates correctly for Low/Medium/High, and an approval email click resumes the workflow.
+**M2. Gate and approvals end-to-end (week 2-3): backend DONE**
+- Status:
+  - [x] `WorkflowContext.propose(step_key, generate)`: guardrails (with retry feedback loop), autonomy decision, then execute, escalate or block. Keyed by `step_key`, so workflows are **re-entrant**: finished steps return stored results, approved steps execute, pending steps pause again, and `generate` (LLM spend) is never re-run once an action exists
+  - [x] Escalation parks the run (`waiting_approval`); an approval re-enters it via Celery; a rejection re-enters it too, with the admin's note available to the workflow
+  - [x] Approvals API (owner only): list, detail, approve (optionally **with edited payload**) or reject with a note. Concurrent decisions resolve to exactly one winner (409 for the other)
+  - [x] Every decision is written to workspace memory (`decision` or, when a note is given, `preference`)
+  - [x] In-app notifications (owners only, per user) and Resend emails through a Celery task with retry and backoff
+  - [x] Runs API (start, list, detail with the action trail); counters feed back into the gate (publishes, video spend)
+  - [x] Run claiming is atomic, so a redelivered task cannot execute a run twice, and a run stuck in `running` after a worker death is reclaimed after `RUN_STALE_MINUTES`
+  - [ ] Resend sending domain (SPF/DKIM) and the inbound reply webhook (moved to M4, where replies are first needed)
+  - [ ] Approval UI (with the Next.js app)
+- Deviation from the proposal: emails **deep-link to the in-app approval page** instead of containing signed approve/reject links. Mail scanners prefetch links and would auto-approve, and approving a publish should be a deliberate, logged-in act.
+- Safety properties are covered by tests that were mutation-checked (removing the pending guard, or making the guardrail fail open, makes a test fail). (The earlier known limit on concurrent video spend is fixed: spend is now reserved atomically before executing and released if the executor fails. See section 9.)
+- *Done when:* the same action proceeds or escalates correctly for Low/Medium/High (met, in `tests/test_gate_flow.py`), and an approval resumes the workflow (met over HTTP in `tests/test_approvals_api.py`; the email-click half is replaced by the deep link).
 
-**M3. Strategy and Creative engines (week 3-5)**
-- Onboarding interview (brand, tone, goals, competitors) producing the workspace rubric and memory
-- Strategy agent: niche (extend `niche.py` with real YouTube data scores), competitor research, 30-day calendar proposal
-- Creative agent: titles, descriptions, metadata, thumbnail prompt with image generation behind a provider interface like video
-- Memory retrieval injected into prompts
-- *Done when:* onboarding yields a calendar and creatives that pass the guardrail, with approvals recorded.
+**M3. Strategy and Creative engines (week 3-5): backend DONE, UI built, not yet tried with a live LLM**
+- Status:
+  - [x] Onboarding API (`PUT/GET /workspaces/{id}/onboarding`): channel, goal, audience, tone, banned topics, rules, up to 10 competitors, cadence, region. The answers become the brand profile **and the guardrail rubric**, so what the owner said about tone and forbidden topics is what every generated asset is judged against. Resubmitting keeps the niche the agent chose. (A structured form, not a conversational interview; an LLM follow-up interview can be layered on later.)
+  - [x] Memory service: recall always scoped to one workspace, admin guidance (`preference`) first, size-capped. Injected into every prompt as delimited data with an instruction not to obey it; stored text is defanged so it cannot close or forge the delimiters
+  - [x] Market signals (`integrations/youtube.py`): trending plus competitor recent uploads (about 3 API quota units per competitor). Channel references are parsed strictly (handle, URL or id; anything else is rejected, which also blocks parameter injection). One failing source never fails the rest; with no key the strategy still runs and the prompt says there is no market data
+  - [x] Strategy agent and `strategy_onboarding` workflow: the model proposes 3-5 niches; **code** scores them against the owner's goal (growth, monetization, engagement weights), picks the default, and assigns calendar dates from the posting cadence (never from the model). Scores are labelled in the proposal as model estimates, not measurements. Two high-stakes steps (niche, then 30-day calendar); a rejection note is already in memory when the next attempt runs, so the model sees it; up to 3 attempts per step
+  - [x] Admin edits are validated per action type **before** the approval is recorded (invalid niche pick, empty or over-long calendar, titles over 100 characters give a 422 and the approval stays decidable)
+  - [x] Creative agent and `creative_for_item` workflow: titles, description, tags, thumbnail concepts, video plan. YouTube's limits are enforced in code (title 100 characters, description 5000 bytes, tag and total tag length, no angle brackets or tags), including on admin edits. Routine, so Medium autonomy proceeds if the guardrails pass
+  - [x] Optional thumbnail image step behind `IMAGE_GEN_ENABLED`: `ImageProvider` interface, Imagen adapter, Cloudinary `AssetStore` (private, per-workspace folders)
+  - [x] Calendar API, run params validated per workflow, and `role` on the workspace response
+  - [ ] **Not yet exercised against live services:** Gemini (no key was available), the YouTube Data API, Imagen and Cloudinary. Their adapters are tested against fakes and the request shapes follow each SDK's documented API; expect to fix small mismatches on first live run
+  - [ ] Score calibration: niche scores are LLM estimates grounded on supplied data. Replace with measured metrics (search volume, competitor view velocity) once there is real data to compare against
+- *Done when:* onboarding yields a calendar and creatives that pass the guardrail, with approvals recorded. Met with fake models (`tests/test_strategy.py`, `tests/test_creative.py`); a live-model run is the remaining check.
 
 **M4. Editor workflow and Communication Agent (week 5-7)**
 - Brief generation, assignment, deadline tracking; Editor view in the PWA
@@ -188,7 +207,7 @@ Running tests: `pytest` uses in-memory SQLite; `TEST_DATABASE_URL=postgresql+psy
 
 **M5. Optional AI video (week 7-8)**
 - Creative agent emits a video plan and scene prompts and proposes `GENERATE_VIDEO` with a cost estimate
-- Celery job: submit, poll with backoff (port the backoff from the old `video_gen.py`), fetch to object storage, `Asset` row; persist the operation id on the Run (the Veo adapter currently keeps operations in memory, which must be fixed before production)
+- Celery job: submit, poll with backoff, fetch to Cloudinary (`resource_type=video`, chunked upload), `Asset` row. Already done: the Veo adapter rebuilds an operation from its stored id, so a restarted worker can resume; budget reservation is atomic; unpriced or unconfigured video generation is blocked; a side-effecting action with no executor fails loudly. Remaining: the `GENERATE_VIDEO` executor, persisting the job id on the Run, and the "Generate with AI?" step in the creative workflow
 - Workspace settings: enable toggle and monthly budget; spend ledger; "Generate with AI?" approval card
 - *Done when:* with the flag on, an Owner can approve a generation, the file lands in storage, and spend is deducted; with it off, nothing changes.
 
@@ -280,3 +299,53 @@ Decisions and caveats:
 - **Editor uploads:** use signed direct-to-Cloudinary uploads from the PWA so large files do not pass through the API; the backend only issues the signature and records the resulting `public_id`.
 - **Access:** use `type="authenticated"` or signed delivery URLs for unpublished work (briefs, drafts). Only published or public thumbnails may use plain URLs.
 - **Veo flow change (M5):** `provider.fetch` writes the file to a temp dir, then `AssetStore.upload` sends it to Cloudinary and the temp file is deleted. Workers on Render have ephemeral disks, so nothing is kept locally.
+
+## 9. Fixes and hardening log
+
+Each item was a recommended fix from earlier reviews or was found while building M3. All have tests.
+
+| Fix | Why it mattered | Where |
+|---|---|---|
+| Video spend is **reserved atomically** (one conditional `UPDATE`) before the executor runs, and released if it fails | Two concurrent generations could both pass the budget check and overspend | `workflows/context.py`, `tests/test_gate_flow.py` |
+| A video action with an **unknown cost is blocked** at every autonomy level | An unpriced generation was treated as free. `VIDEO_COST_PER_SECOND_USD` must be set to enable it | `gate/autonomy.py`, `video/gemini_veo.py` |
+| Actions with real effect (publish, video) **must have an executor**; otherwise the step fails | A missing executor would have recorded "executed" when nothing happened | `workflows/context.py` |
+| **Veo jobs survive restarts**: the operation is rebuilt from its stored name; submit without a name is an error | The in-memory operation map lost in-flight jobs on every worker restart | `video/gemini_veo.py`, `tests/test_veo_provider.py` |
+| The gate's action record is **committed before any side effect** | An executor crash rolled back the record and made a retry re-run `generate` (extra LLM spend) | `workflows/context.py` |
+| **Guardrail outage fails closed** (escalates, does not retry against a dead judge) | A down judge must never wave content through | `workflows/context.py` |
+| Admin edits to a proposal are **validated per action type before** the approval is claimed | An invalid edit would otherwise fail the run after approval | `workflows/context.py`, `api/approval_routes.py` |
+| Memory and market data are **injected as delimited data**, defanged, with an instruction not to obey them | Admin notes, competitor titles and model echoes are untrusted text in prompts | `memory/service.py`, `integrations/youtube.py` |
+| **Channel references parsed strictly** | A crafted "handle" could inject extra query parameters into YouTube API calls | `integrations/youtube.py` |
+| YouTube **content limits enforced in code**, tags stripped, brackets removed | Models ignore length limits often enough to produce rejected uploads | `agents/creative.py` |
+| Calendar **dates assigned in code**, round-half-up spacing | Model-chosen dates are unreliable; banker's rounding made slots uneven | `agents/strategy.py` |
+| **Post-login redirect** returns to the page you were on, same-site relative paths only | The callback dropped the destination; a naive version would be an open redirect | `api/auth_routes.py` |
+| **Dev-login** exists for local testing, off by default, 404 in production, and the app refuses to boot in production with it on | Testing the full flow without a verified Google app | `api/auth_routes.py`, `core/config.py` |
+| API timestamps normalised to **UTC** | Some backends return naive datetimes | `api/calendar_routes.py` |
+| Session factory **cached** | A new sessionmaker was built on every call | `db/session.py` |
+| Test suite **refuses to run on a database not named `*test*`** | It drops every table; a mistake destroyed a migration baseline once | `tests/conftest.py` |
+| **Frontend proxies to `127.0.0.1`**, not `localhost` | Node may resolve `localhost` to IPv6 while uvicorn listens on IPv4, so every API call failed | `frontend/next.config.mjs` |
+| Prototype leftovers removed: `templates/index.html`, `feedbacks.json`, the demo graph, `scratch/`, the old niche agent, `langgraph` dependency | Superseded by the new structure; all remain in git history | repo root, `backend/` |
+| Proposal fixes: Phase numbering, AI video moved into scope as optional, publish-floor rule and a numeric approval-rate target added | The document contradicted the design | `docs/creatorops.md` |
+
+## 10. Local development and testing
+
+**Database.** Local development uses the Postgres on your machine, owned by role `bellz`; Docker no longer runs a database, and production uses Supabase.
+
+```bash
+bash backend/scripts/setup_local_db.sh      # idempotent; creates role bellz if missing, plus
+                                            # databases creatorops and creatorops_test
+cp backend/.env.example backend/.env        # set DATABASE_URL (bellz password), DEV_LOGIN_ENABLED=true, GEMINI_API_KEY
+cd backend && alembic upgrade head
+```
+
+**Run it.**
+
+```bash
+# backend (TASKS_EAGER=true runs jobs inline, so no Redis or worker is needed locally)
+cd backend && TASKS_EAGER=true uvicorn app.api.main:app --reload --port 8000
+# frontend
+cd frontend && cp .env.example .env.local && npm install && npm run dev      # http://localhost:3000
+```
+
+Log in with the dev-login form, complete onboarding, run `strategy_onboarding`, approve the niche and the calendar, then generate creative for a calendar item. With `docker compose up` instead, containers reach the host database through `host.docker.internal` (see the comments in `docker-compose.yml`).
+
+**Tests.** `pytest` (SQLite in memory, about 15 s). `TEST_DATABASE_URL=postgresql+psycopg://bellz:<pw>@localhost:5432/creatorops_test pytest` runs the same suite on real Postgres; the database name must contain `test`. Migrations were checked on real Postgres (upgrade, downgrade, upgrade, `alembic check`, and an upgrade over pre-existing rows).

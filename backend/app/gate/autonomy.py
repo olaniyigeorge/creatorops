@@ -81,7 +81,9 @@ def decide(
     if action.type is ActionType.GENERATE_VIDEO:
         if not policy.video_gen_enabled:
             return GateDecision(verdict=Verdict.BLOCKED, reason="Video generation is disabled for this workspace")
-        cost = action.estimated_cost_usd or 0.0
+        cost = action.estimated_cost_usd
+        if cost is None:  # never treat an unpriced generation as free
+            return GateDecision(verdict=Verdict.BLOCKED, reason="Video generation cost is unknown")
         if cost > policy.video_budget_usd_remaining:
             return GateDecision(verdict=Verdict.BLOCKED, reason="Estimated cost exceeds remaining video budget")
 

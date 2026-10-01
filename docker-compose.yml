@@ -1,32 +1,27 @@
 # Local development only. Production runs as separate Render services (see render.yaml).
+#
+# There is deliberately no Postgres service here: development uses the Postgres on
+# your machine (see backend/scripts/setup_local_db.sh) and production uses Supabase.
+# Containers reach the host database through host.docker.internal, so put this in
+# backend/.env:
+#   DATABASE_URL=postgresql+psycopg://bellz:<password>@host.docker.internal:5432/creatorops
+# and make sure the local server listens beyond localhost and allows the Docker
+# subnet in pg_hba.conf (listen_addresses, host ... scram-sha-256).
 x-backend: &backend
   build: ./backend
   env_file:
     - path: ./backend/.env
       required: false
-  environment: &backend-env
-    DATABASE_URL: postgresql+psycopg://creatorops:creatorops@db:5432/creatorops
-    REDIS_URL: redis://redis:6379/0
+  environment:
+    REDIS_URL: redis://redis:6379/0   # DATABASE_URL comes from backend/.env
+  extra_hosts:
+    - "host.docker.internal:host-gateway"
   volumes:
     - ./backend:/app
   depends_on:
-    db: { condition: service_healthy }
     redis: { condition: service_started }
 
 services:
-  db:
-    image: postgres:16
-    environment:
-      POSTGRES_USER: creatorops
-      POSTGRES_PASSWORD: creatorops
-      POSTGRES_DB: creatorops
-    ports: ["5432:5432"]
-    volumes: [pgdata:/var/lib/postgresql/data]
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U creatorops"]
-      interval: 3s
-      retries: 10
-
   redis:
     image: redis:7
     ports: ["6379:6379"]
@@ -45,6 +40,3 @@ services:
     command: celery -A app.tasks:celery_app beat --loglevel=info
 
   # frontend: added with the Next.js app (runs on Vercel in production)
-
-volumes:
-  pgdata:

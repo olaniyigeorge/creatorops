@@ -12,4 +12,4 @@ celery_app.conf.update(
     timezone="UTC",
 )
 
-from app.tasks import runner  # noqa: E402,F401  (registers tasks)
+from app.tasks import email_tasks, runner  # noqa: E402,F401  (registers tasks)

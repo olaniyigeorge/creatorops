@@ -24,16 +24,33 @@ class GeminiVeoProvider(VideoProvider):
 
             client = genai.Client(api_key=api_key or settings.GEMINI_API_KEY)
         self.client = client
-        # Operations are kept in-process between submit/poll. Persisting the
-        # operation name on the Run and rehydrating it is a TODO for the Celery task.
+        # In-process cache only. The provider-side job id (the operation name) is the
+        # source of truth and is stored on the Run, so any worker or a restarted
+        # process can poll and fetch by rebuilding the operation from that id.
         self._operations: dict[str, Any] = {}
+
+    def _operation(self, job: VideoJob) -> Any:
+        op = self._operations.get(job.job_id)
+        if op is None:
+            from google.genai import types
+
+            op = types.GenerateVideosOperation(name=job.job_id)
+        return op
+
+    def estimate_cost_usd(self, request: VideoRequest) -> Optional[float]:
+        rate = settings.VIDEO_COST_PER_SECOND_USD
+        if rate <= 0:
+            return None  # unpriced: the gate blocks generation rather than assume it is free
+        return round(rate * (request.duration_seconds or settings.VIDEO_DEFAULT_SECONDS), 4)
 
     def submit(self, request: VideoRequest) -> VideoJob:
         operation = self.client.models.generate_videos(
             model=request.model or settings.VIDEO_MODEL,
             prompt=request.prompts,
         )
-        job_id = getattr(operation, "name", None) or str(id(operation))
+        job_id = getattr(operation, "name", None)
+        if not job_id:
+            raise RuntimeError("Provider returned no operation name; cannot track this job")
         self._operations[job_id] = operation
         return VideoJob(
             job_id=job_id,
@@ -43,7 +60,7 @@ class GeminiVeoProvider(VideoProvider):
         )
 
     def poll(self, job: VideoJob) -> VideoJob:
-        operation = self.client.operations.get(self._operations[job.job_id])
+        operation = self.client.operations.get(self._operation(job))
         self._operations[job.job_id] = operation
         if not getattr(operation, "done", False):
             return job.model_copy(update={"status": VideoJobStatus.RUNNING})
@@ -54,7 +71,10 @@ class GeminiVeoProvider(VideoProvider):
         return job.model_copy(update={"status": VideoJobStatus.SUCCEEDED})
 
     def fetch(self, job: VideoJob, dest_dir: Path, filename: str) -> Path:
-        operation = self._operations[job.job_id]
+        operation = self._operations.get(job.job_id)
+        if operation is None or not getattr(operation, "done", False):
+            operation = self.client.operations.get(self._operation(job))
+            self._operations[job.job_id] = operation
         videos = getattr(getattr(operation, "response", None), "generated_videos", None)
         if not videos:
             raise RuntimeError("No generated videos in operation response")

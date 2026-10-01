@@ -36,7 +36,11 @@ def create_workspace(
     db.flush()
     WorkspaceRepo(db, Membership, ws.id).add(user_id=user.id, role=Role.OWNER.value)
     db.commit()
-    return ws
+    return _out(ws, Role.OWNER.value)
+
+
+def _out(ws: Workspace, role: str) -> WorkspaceOut:
+    return WorkspaceOut.model_validate(ws).model_copy(update={"role": role})
 
 
 @router.get("/workspaces", response_model=list[WorkspaceSummary])
@@ -54,7 +58,7 @@ def list_my_workspaces(
 
 @router.get("/workspaces/{workspace_id}", response_model=WorkspaceOut)
 def get_workspace(ctx: WorkspaceContext = Depends(workspace_ctx)):
-    return ctx.workspace
+    return _out(ctx.workspace, ctx.membership.role)
 
 
 @router.patch("/workspaces/{workspace_id}", response_model=WorkspaceOut)
@@ -66,7 +70,7 @@ def update_workspace(
             continue
         setattr(ctx.workspace, key, getattr(value, "value", value))
     ctx.db.commit()
-    return ctx.workspace
+    return _out(ctx.workspace, ctx.membership.role)
 
 
 @router.get("/workspaces/{workspace_id}/members", response_model=list[MemberOut])

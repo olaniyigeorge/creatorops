@@ -21,7 +21,7 @@ def pol(level, **kw):
 @pytest.mark.parametrize("t", list(A))
 def test_low_escalates_everything_except_blocked(t):
     p = pol(L.LOW, video_gen_enabled=True, video_budget_usd_remaining=100)
-    assert decide(act(t), p, 1.0).verdict is V.ESCALATE
+    assert decide(act(t, cost=1), p, 1.0).verdict is V.ESCALATE
 
 
 def test_medium_routine_proceeds_high_stakes_escalates():
@@ -58,3 +58,10 @@ def test_video_gen_blocked_when_disabled_or_over_budget():
 def test_video_gen_needs_admin_below_high():
     p = pol(L.MEDIUM, video_gen_enabled=True, video_budget_usd_remaining=100)
     assert decide(act(A.GENERATE_VIDEO, 3), p, 1.0).verdict is V.ESCALATE
+
+
+def test_video_gen_with_unknown_cost_is_blocked_at_every_level():
+    for level in L:
+        p = pol(level, video_gen_enabled=True, video_budget_usd_remaining=1000)
+        d = decide(act(A.GENERATE_VIDEO, None), p, 1.0)
+        assert d.verdict is V.BLOCKED and "unknown" in d.reason

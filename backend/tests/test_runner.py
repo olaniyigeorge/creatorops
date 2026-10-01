@@ -30,7 +30,7 @@ def test_unknown_workflow_fails_with_error(db):
 
 def test_workflow_exception_is_recorded_not_raised(db):
     ws = _ws(db)
-    register_workflow("boom", lambda run, db: 1 / 0)
+    register_workflow("boom", lambda ctx: 1 / 0)
     try:
         run = WorkspaceRepo(db, m.Run, ws.id).add(workflow="boom")
         out = execute_run(db, ws.id, run.id)
@@ -45,3 +45,33 @@ def test_cannot_execute_another_workspaces_run(db):
     with pytest.raises(LookupError):
         execute_run(db, b.id, run.id)
     assert db.get(m.Run, run.id).status == "pending"
+
+
+def test_finished_run_is_not_rerun_on_redelivery(db):
+    ws = _ws(db)
+    calls = []
+    register_workflow("once", lambda ctx: calls.append(1) or {"n": len(calls)})
+    try:
+        run = WorkspaceRepo(db, m.Run, ws.id).add(workflow="once")
+        execute_run(db, ws.id, run.id)
+        out = execute_run(db, ws.id, run.id)  # at-least-once delivery
+        assert calls == [1] and out.status == "succeeded"
+    finally:
+        WORKFLOWS.pop("once")
+
+
+def test_claim_is_exclusive_and_stale_runs_are_reclaimable(db):
+    from datetime import timedelta
+
+    from app.db.base import utcnow
+    from app.tasks.runner import _claim
+
+    ws = _ws(db)
+    run = WorkspaceRepo(db, m.Run, ws.id).add(workflow="noop")
+    db.commit()
+    assert _claim(db, ws.id, run.id) is True
+    assert _claim(db, ws.id, run.id) is False  # already running: second worker backs off
+
+    db.get(m.Run, run.id).started_at = utcnow() - timedelta(hours=1)  # worker died
+    db.commit()
+    assert _claim(db, ws.id, run.id) is True

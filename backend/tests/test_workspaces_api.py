@@ -99,3 +99,13 @@ def test_invitation_token_is_stored_hashed(client, db):
     token = client.post(f"/workspaces/{ws['id']}/invitations", json={"email": "e@x.co"}).json()["token"]
     stored = db.query(Invitation).one()
     assert stored.token_hash != token and len(stored.token_hash) == 64
+
+
+def test_workspace_response_includes_the_callers_role(client, engine, db):
+    owner, editor = make_user(db, "own@x.co"), make_user(db, "ed@x.co")
+    ws = _create(login(client, owner))
+    assert ws["role"] == "owner" and client.get(f"/workspaces/{ws['id']}").json()["role"] == "owner"
+    token = client.post(f"/workspaces/{ws['id']}/invitations", json={"email": "ed@x.co"}).json()["token"]
+    ed = make_client_for(engine, editor)
+    ed.post("/invitations/accept", json={"token": token})
+    assert ed.get(f"/workspaces/{ws['id']}").json()["role"] == "editor"

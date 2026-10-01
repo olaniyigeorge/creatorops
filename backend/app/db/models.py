@@ -116,21 +116,39 @@ class Run(TenantMixin, Base):
 
     id: Mapped[uuid.UUID] = pk()
     workflow: Mapped[str] = mapped_column(String(64))
+    params_json: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
     status: Mapped[str] = mapped_column(String(24), default=RunStatus.PENDING.value)
     state_json: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
     video_job_json: Mapped[Optional[dict[str, Any]]] = mapped_column(JSON)
     error: Mapped[Optional[str]] = mapped_column(Text)
     created_at: Mapped[datetime] = created_at()
+    started_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
     finished_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+
+
+class ActionStatus(str, Enum):
+    AWAITING_APPROVAL = "awaiting_approval"
+    APPROVED = "approved"
+    EXECUTED = "executed"
+    REJECTED = "rejected"
+    BLOCKED = "blocked"
+    FAILED = "failed"
 
 
 class Action(TenantMixin, Base):
     __tablename__ = "actions"
+    # step_key makes `propose` idempotent: a re-entered workflow finds its action.
+    __table_args__ = (UniqueConstraint("run_id", "step_key", name="uq_actions_run_id_step_key"),)
 
     id: Mapped[uuid.UUID] = pk()
     run_id: Mapped[uuid.UUID] = mapped_column(
         Uuid, ForeignKey("runs.id", ondelete="CASCADE"), index=True
     )
+    step_key: Mapped[str] = mapped_column(String(128))
+    status: Mapped[str] = mapped_column(String(24))
+    gate_reason: Mapped[Optional[str]] = mapped_column(Text)
+    guardrail_feedback: Mapped[Optional[str]] = mapped_column(Text)
+    result_json: Mapped[Optional[dict[str, Any]]] = mapped_column(JSON)
     type: Mapped[str] = mapped_column(String(32))
     summary: Mapped[str] = mapped_column(Text)
     payload_json: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
@@ -150,6 +168,7 @@ class Approval(TenantMixin, Base):
     status: Mapped[str] = mapped_column(String(16), default="pending")
     decided_by: Mapped[Optional[uuid.UUID]] = mapped_column(Uuid, ForeignKey("users.id"))
     decision_note: Mapped[Optional[str]] = mapped_column(Text)
+    edited_payload_json: Mapped[Optional[dict[str, Any]]] = mapped_column(JSON)
     decided_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[datetime] = created_at()
 
@@ -198,4 +217,19 @@ class MemoryItem(TenantMixin, Base):
     source_approval_id: Mapped[Optional[uuid.UUID]] = mapped_column(
         Uuid, ForeignKey("approvals.id", ondelete="SET NULL")
     )
+    created_at: Mapped[datetime] = created_at()
+
+
+class Notification(TenantMixin, Base):
+    __tablename__ = "notifications"
+
+    id: Mapped[uuid.UUID] = pk()
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, ForeignKey("users.id", ondelete="CASCADE"), index=True
+    )
+    kind: Mapped[str] = mapped_column(String(32))  # approval_needed | ...
+    title: Mapped[str] = mapped_column(String(300))
+    body: Mapped[str] = mapped_column(Text, default="")
+    link: Mapped[Optional[str]] = mapped_column(String(512))  # in-app path
+    read_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[datetime] = created_at()

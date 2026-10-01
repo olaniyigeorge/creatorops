@@ -18,8 +18,13 @@ def get_engine() -> Engine:
     )
 
 
+@lru_cache
+def get_sessionmaker() -> sessionmaker:
+    return sessionmaker(bind=get_engine(), expire_on_commit=False)
+
+
 def SessionLocal() -> Session:
-    return sessionmaker(bind=get_engine(), expire_on_commit=False)()
+    return get_sessionmaker()()
 
 
 def get_db():
