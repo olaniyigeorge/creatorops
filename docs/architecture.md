@@ -199,11 +199,18 @@ Running tests: `pytest` uses in-memory SQLite; `TEST_DATABASE_URL=postgresql+psy
   - [ ] Score calibration: niche scores are LLM estimates grounded on supplied data. Replace with measured metrics (search volume, competitor view velocity) once there is real data to compare against
 - *Done when:* onboarding yields a calendar and creatives that pass the guardrail, with approvals recorded. Met with fake models (`tests/test_strategy.py`, `tests/test_creative.py`); a live-model run is the remaining check.
 
-**M4. Editor workflow and Communication Agent (week 5-7)**
-- Brief generation, assignment, deadline tracking; Editor view in the PWA
-- Communication Agent: status reports, deadline follow-ups, escalation emails; Gmail threads for editor conversations
-- Google Calendar sync for the content calendar
-- *Done when:* a calendar item becomes a brief, the editor is emailed, and overdue briefs trigger a follow-up.
+**M4. Editor workflow and Communication Agent (week 5-7): core DONE, Gmail/Calendar/inbound replies pending**
+- Status:
+  - [x] `brief_for_item` workflow (PM agent in `agents/pm.py`): calendar item to a brief (objective, outline, shot list, references, deliverables, notes). Proposes `ASSIGN_BRIEF`, a routine action, so Medium autonomy proceeds if the guardrails pass and Low escalates. Default deadline is `BRIEF_LEAD_DAYS` before the scheduled publish (never in the past). The editor must be a member of the workspace; the check runs before any LLM spend and again in the executor, because an admin can edit the editor on the approval. One open brief per calendar item
+  - [x] Briefs API (`/workspaces/{id}/briefs`): owners see all, an editor sees only briefs assigned to them (others get 404). Editors move `assigned` to `in_progress` to `submitted` (forward only); only the owner closes (`done`), reassigns or moves the deadline. Reassigning or a new deadline resets follow-ups. Delivery notifies the owners
+  - [x] Deadline tracking: Celery beat runs `scan_overdue_briefs` hourly and starts a `brief_followup` run per late brief. Follow-ups are spaced by `BRIEF_FOLLOWUP_INTERVAL_HOURS`, never duplicated while one is in flight or awaiting approval, and a rejected follow-up is not retried straight away. After `BRIEF_MAX_FOLLOWUPS` to the editor, the Communication agent (`agents/comms.py`) writes one escalation to the owners and the nagging stops. A brief delivered while a follow-up awaited approval is not chased
+  - [x] Emails go out after the action is committed, at most once (the action's result records `emailed` before enqueuing). Model-written text is markup-stripped and HTML-escaped; emails deep-link to the in-app brief
+  - [x] Editor view in the Next.js app: "My briefs", brief detail with status buttons, owner controls (reassign, move deadline, accept delivery) and "Create brief" on the calendar
+  - [ ] Gmail threads for editor conversations (per-owner OAuth, from the Google OAuth app verification), Resend inbound reply webhook. Briefs and follow-ups currently go through the Resend system sender
+  - [ ] Google Calendar sync for the content calendar
+  - [ ] Not yet exercised against a live LLM (same caveat as M3); the comms prompt forbids placeholders and links but wording is untested
+- Migration `c1f0a7d3b9e4` adds `submitted_at`, `followup_count` and `last_followup_at` to `briefs`.
+- *Done when:* a calendar item becomes a brief, the editor is emailed, and overdue briefs trigger a follow-up. Met with fake models and a fake worker (`tests/test_briefs.py`: 16 tests, mutation-checked for the delivered-brief and editor-visibility rules).
 
 **M5. Optional AI video (week 7-8)**
 - Creative agent emits a video plan and scene prompts and proposes `GENERATE_VIDEO` with a cost estimate

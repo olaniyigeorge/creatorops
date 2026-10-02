@@ -14,6 +14,7 @@ const TONE: Record<string, string> = {
   failed: "bad", rejected: "bad", blocked: "bad",
   waiting_approval: "warn", awaiting_approval: "warn", pending: "warn",
   running: "info",
+  assigned: "info", in_progress: "info", submitted: "ok", done: "ok", draft: "warn",
 };
 
 export function StatusBadge({ status }: { status: string }) {

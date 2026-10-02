@@ -104,4 +104,4 @@ def run_workflow(workspace_id: str, run_id: str) -> str:
 
 
 # Register built-in workflows (imported last: they import from this module).
-from app.workflows import creative_flow, strategy_flow  # noqa: E402,F401
+from app.workflows import brief_flow, creative_flow, strategy_flow  # noqa: E402,F401

@@ -47,6 +47,11 @@ class Settings(BaseSettings):
     # --- Content calendar ---
     DEFAULT_PUBLISH_HOUR_UTC: int = 15
 
+    # --- Editor workflow ---
+    BRIEF_LEAD_DAYS: int = 3  # default deadline: this many days before the scheduled publish
+    BRIEF_FOLLOWUP_INTERVAL_HOURS: int = 24  # minimum gap between follow-ups on one brief
+    BRIEF_MAX_FOLLOWUPS: int = 3  # editor follow-ups before the owner is told instead
+
     # --- Provider credentials ---
     GEMINI_API_KEY: str = ""
     OPENAI_API_KEY: str = ""

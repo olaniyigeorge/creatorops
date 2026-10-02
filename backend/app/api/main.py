@@ -2,6 +2,7 @@ from fastapi import FastAPI
 
 from app.api import (
     approval_routes,
+    brief_routes,
     auth_routes,
     calendar_routes,
     notification_routes,
@@ -19,6 +20,7 @@ app.include_router(approval_routes.router)
 app.include_router(notification_routes.router)
 app.include_router(onboarding_routes.router)
 app.include_router(calendar_routes.router)
+app.include_router(brief_routes.router)
 
 
 @app.get("/health")

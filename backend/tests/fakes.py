@@ -55,3 +55,22 @@ def creative(n=1):
 def strategy_agent(niche=niche_options, calendar=calendar_ideas):
     n, c = Recorder(niche), Recorder(calendar)
     return StrategyAgent(niche_model=n.model, calendar_model=c.model), n, c
+
+
+def brief_draft(n=1):
+    from app.schemas.brief import BriefDraft, OutlineSection
+
+    return BriefDraft(
+        objective="Cut a 10 minute tutorial on retrobrighting",
+        outline=[OutlineSection(heading="Hook", notes="show the yellowed shell first"), OutlineSection(heading="Steps", notes="gel, UV, rinse")],
+        shot_list=["close up of the shell", "applying gel"],
+        references=["fast cuts, warm colour grade"],
+        deliverables=["final cut", "captions file"],
+        editor_notes="Friendly tone. <b>No</b> hype.",
+    )
+
+
+def followup(n=1):
+    from app.schemas.brief import FollowUpDraft
+
+    return FollowUpDraft(subject=f"Checking in on your brief (#{n})", body="Hi,\nCould you share a status and a new date?\nThanks")

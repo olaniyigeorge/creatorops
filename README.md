@@ -28,7 +28,7 @@ Phase 1 (MVP foundation) is in progress.
 | M1 Platform: auth, workspaces, roles, invitations, tenant isolation | backend and UI done |
 | M2 Gate and approvals: autonomy policy, guardrails, escalation, notifications | backend and UI done |
 | M3 Strategy and Creative engines | backend and UI done; **not yet run against a live LLM** |
-| M4 Editor workflow and Communication Agent | not started |
+| M4 Editor workflow and Communication Agent | briefs, assignment, deadline follow-ups and Editor view done; Gmail, Google Calendar sync and the inbound reply webhook not built |
 | M5 Optional AI video | building blocks done (provider, budget, restart-safe jobs); executor not built |
 
 ## Quick start (local)

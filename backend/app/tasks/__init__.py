@@ -10,6 +10,9 @@ celery_app.conf.update(
     task_acks_late=True,  # a worker killed mid-run (e.g. Render restart) re-queues the task
     task_reject_on_worker_lost=True,
     timezone="UTC",
+    beat_schedule={
+        "scan-overdue-briefs": {"task": "scan_overdue_briefs", "schedule": 3600.0},
+    },
 )
 
-from app.tasks import email_tasks, runner  # noqa: E402,F401  (registers tasks)
+from app.tasks import brief_tasks, email_tasks, runner  # noqa: E402,F401  (registers tasks)

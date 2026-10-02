@@ -183,6 +183,14 @@ class CalendarItem(TenantMixin, Base):
     created_at: Mapped[datetime] = created_at()
 
 
+class BriefStatus(str, Enum):
+    DRAFT = "draft"  # no editor yet
+    ASSIGNED = "assigned"
+    IN_PROGRESS = "in_progress"
+    SUBMITTED = "submitted"  # editor says it is delivered
+    DONE = "done"  # owner accepted it
+
+
 class Brief(TenantMixin, Base):
     __tablename__ = "briefs"
 
@@ -194,6 +202,9 @@ class Brief(TenantMixin, Base):
     due_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
     status: Mapped[str] = mapped_column(String(24), default="draft")
     body_json: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    submitted_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    followup_count: Mapped[int] = mapped_column(Integer, default=0)
+    last_followup_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[datetime] = created_at()
 
 

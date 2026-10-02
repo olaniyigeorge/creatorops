@@ -29,6 +29,7 @@ export default function WorkspaceLayout({ children }: { children: React.ReactNod
   const links = [
     { href: base, label: "Dashboard", exact: true },
     { href: `${base}/calendar`, label: "Calendar" },
+    { href: `${base}/briefs`, label: "Briefs" },
     { href: `${base}/runs`, label: "Runs" },
     ...(isOwner ? [{ href: `${base}/approvals`, label: "Approvals" }] : []),
     { href: `${base}/members`, label: "Members" },

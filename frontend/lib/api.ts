@@ -112,6 +112,29 @@ export interface CalendarItem {
   status: string;
 }
 
+export type BriefStatus = "draft" | "assigned" | "in_progress" | "submitted" | "done";
+export interface BriefBody {
+  objective: string;
+  outline: { heading: string; notes: string }[];
+  shot_list: string[];
+  references: string[];
+  deliverables: string[];
+  editor_notes: string;
+}
+export interface Brief {
+  id: string;
+  calendar_item_id: string;
+  title: string;
+  editor_id: string | null;
+  due_at: string | null;
+  status: BriefStatus;
+  overdue: boolean;
+  followup_count: number;
+  body_json: BriefBody;
+  submitted_at: string | null;
+  created_at: string;
+}
+
 export class ApiError extends Error {
   constructor(public status: number, message: string) {
     super(message);
@@ -205,6 +228,13 @@ export const api = {
   notifications: (id: string, unread = false) =>
     get<Notification[]>(`/workspaces/${id}/notifications${unread ? "?unread=true" : ""}`),
   markRead: (id: string, nid: string) => post<Notification>(`/workspaces/${id}/notifications/${nid}/read`),
+
+  briefs: (id: string) => get<Brief[]>(`/workspaces/${id}/briefs`),
+  brief: (id: string, briefId: string) => get<Brief>(`/workspaces/${id}/briefs/${briefId}`),
+  setBriefStatus: (id: string, briefId: string, status: BriefStatus) =>
+    post<Brief>(`/workspaces/${id}/briefs/${briefId}/status`, { status }),
+  updateBrief: (id: string, briefId: string, patch: { editor_id?: string; due_at?: string }) =>
+    request<Brief>("PATCH", `/workspaces/${id}/briefs/${briefId}`, patch),
 
   calendar: (id: string) => get<CalendarItem[]>(`/workspaces/${id}/calendar`),
 };
