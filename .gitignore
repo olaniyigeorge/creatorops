@@ -1,7 +1,24 @@
-*.pyc
+# Secrets: real env files stay local, the *.example templates are committed
 .env
-.next/
-.venv/
+.env.*
+!.env.example
+
+# Python
+*.pyc
 __pycache__/
-logs/
+.venv/
+venv/
+.pytest_cache/
+.coverage
+htmlcov/
+*.egg-info/
+
+# Node / Next.js
 node_modules/
+.next/
+.vercel/
+*.tsbuildinfo
+
+# Misc
+logs/
+.DS_Store
