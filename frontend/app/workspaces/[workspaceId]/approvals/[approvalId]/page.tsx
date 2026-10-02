@@ -4,7 +4,8 @@ import { useParams } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import { api, errorMessage, type Approval, type JsonObject } from "@/lib/api";
 import { useAsync } from "@/lib/hooks";
-import { ErrorBox, fmtDate, Loading, StatusBadge } from "@/components/ui";
+import { ErrorBox, fmtDate, Loading, Notice, PageHeader, StatusBadge } from "@/components/ui";
+import { Icon } from "@/components/icons";
 import { useWorkspace } from "@/components/workspace-context";
 
 type Json = JsonObject;
@@ -28,25 +29,21 @@ function NicheView({ payload, onSelect, editable }: { payload: Json; onSelect: (
   return (
     <>
       <p className="muted small">{str(payload.estimates_note)}</p>
-      <div className="table-wrap">
-        <table>
-          <thead><tr><th>Pick</th><th>Niche</th><th>Score</th><th>Why</th></tr></thead>
-          <tbody>
-            {options.map((o) => {
-              const name = str(o.name);
-              return (
-                <tr key={name}>
-                  <td>
-                    <input type="radio" name="niche" aria-label={`Select ${name}`} disabled={!editable} checked={selected === name} onChange={() => onSelect(name)} />
-                  </td>
-                  <td><strong>{name}</strong><div className="muted small">{asArr(o.keywords).map(str).join(", ")}</div></td>
-                  <td>{typeof o.score === "number" ? o.score.toFixed(2) : "—"}</td>
-                  <td>{str(o.rationale)}</td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
+      <div role="radiogroup" aria-label="Choose a niche">
+        {options.map((o) => {
+          const name = str(o.name);
+          return (
+            <label key={name} className="pick">
+              <input type="radio" name="niche" disabled={!editable} checked={selected === name} onChange={() => onSelect(name)} />
+              <span className="grow">
+                <strong>{name}</strong>
+                <span className="muted small" style={{ display: "block" }}>{asArr(o.keywords).map(str).join(", ")}</span>
+                <span style={{ display: "block", marginTop: 6, fontSize: "0.92rem" }}>{str(o.rationale)}</span>
+              </span>
+              <span className="score">{typeof o.score === "number" ? o.score.toFixed(2) : "—"}</span>
+            </label>
+          );
+        })}
       </div>
       {str(payload.evidence) && <details><summary>Market evidence used</summary><pre>{str(payload.evidence)}</pre></details>}
     </>
@@ -73,7 +70,7 @@ function CreativeView({ payload }: { payload: Json }) {
   return (
     <>
       <h3>Title options</h3>
-      <ul>{asArr(pkg.titles).map(asObj).map((t, i) => <li key={i}><strong>{str(t.title)}</strong> <span className="muted small">{str(t.angle)}</span></li>)}</ul>
+      <ul className="plain-list">{asArr(pkg.titles).map(asObj).map((t, i) => <li key={i}><strong>{str(t.title)}</strong> <span className="muted small">{str(t.angle)}</span></li>)}</ul>
       <h3>Description</h3>
       <pre style={{ whiteSpace: "pre-wrap" }}>{str(pkg.description)}</pre>
       <h3>Tags</h3>
@@ -139,22 +136,22 @@ function Form({ approval, workspaceId, onDone }: { approval: Approval; workspace
         <>
           <label htmlFor="note">Note to the agent <span className="hint">(optional; saved as guidance it will remember)</span></label>
           <textarea id="note" maxLength={2000} value={note} onChange={(e) => setNote(e.target.value)} />
+          <p className="field-help">Reject without a note and the agent only learns that it was declined. Add a note to say why.</p>
           <ErrorBox message={error} />
-          <p className="row">
-            <button className="primary" disabled={!!busy || !!parsed.error} onClick={() => decide("approve")}>
-              {busy === "approve" ? "Approving…" : edited ? "Approve with my edits" : "Approve"}
+          <div className="sticky-actions action-bar">
+            <button className="primary" disabled={!!busy || !!parsed.error} onClick={() => decide("approve")} style={{ flexGrow: 2 }}>
+              <Icon name="check" size={18} />{busy === "approve" ? "Approving…" : edited ? "Approve with my edits" : "Approve"}
             </button>
             <button className="danger" disabled={!!busy} onClick={() => decide("reject")}>
               {busy === "reject" ? "Rejecting…" : "Reject"}
             </button>
-          </p>
-          <p className="muted small">Reject without a note and the agent only learns that it was declined. Add a note to say why.</p>
+          </div>
         </>
       ) : (
-        <div className="notice">
-          <StatusBadge status={approval.status} /> {fmtDate(approval.decided_at)}
+        <Notice icon="clock">
+          <StatusBadge status={approval.status} /> <span className="muted">{fmtDate(approval.decided_at)}</span>
           {approval.decision_note && <p style={{ marginBottom: 0 }}>Note: {approval.decision_note}</p>}
-        </div>
+        </Notice>
       )}
     </>
   );
@@ -166,24 +163,31 @@ export default function ApprovalDetailPage() {
   const id = workspace.id;
   const a = useAsync(() => (isOwner ? api.approval(id, approvalId) : Promise.reject(new Error("Owner only"))), [id, approvalId, isOwner]);
 
-  if (!isOwner) return <div className="notice">Only the workspace owner can review approvals.</div>;
+  if (!isOwner) return <Notice icon="shield">Only the workspace owner can review approvals.</Notice>;
   const d = a.data;
   return (
     <>
-      <p><Link href={`/workspaces/${id}/approvals`}>← All approvals</Link></p>
+      {!d && <Link className="back" href={`/workspaces/${id}/approvals`}><Icon name="back" size={16} />All approvals</Link>}
       <ErrorBox message={a.error} />
       {a.loading && <Loading />}
       {d && (
         <>
-          <div className="row between"><h1>{d.action.summary}</h1><StatusBadge status={d.status} /></div>
+          <PageHeader
+            back={{ href: `/workspaces/${id}/approvals`, label: "All approvals" }}
+            title={d.action.summary}
+            subtitle={<StatusBadge status={d.status} />}
+          />
           <div className="card">
-            <p><strong>Why you are being asked:</strong> {d.action.gate_reason ?? "—"}</p>
-            <p className="small muted" style={{ marginBottom: 0 }}>
-              {d.action.type} · guardrail score {d.action.guardrail_score !== null ? d.action.guardrail_score.toFixed(2) : "n/a"}
-              {d.action.estimated_cost_usd !== null ? ` · est. cost $${d.action.estimated_cost_usd.toFixed(2)}` : ""}
-              {" · "}<Link href={`/workspaces/${id}/runs`}>runs</Link>
-            </p>
-            {d.guardrail_feedback && <p className="small">Guardrail feedback: {d.guardrail_feedback}</p>}
+            <h3>Why you&apos;re being asked</h3>
+            <p style={{ marginBottom: 6 }}>{d.action.gate_reason ?? "—"}</p>
+            <div className="meta">
+              <span>{d.action.type.replace(/_/g, " ")}</span>
+              <span className="sep">·</span>
+              <span>guardrail {d.action.guardrail_score !== null ? d.action.guardrail_score.toFixed(2) : "n/a"}</span>
+              {d.action.estimated_cost_usd !== null && <><span className="sep">·</span><span>est. ${d.action.estimated_cost_usd.toFixed(2)}</span></>}
+              <span className="sep">·</span><Link href={`/workspaces/${id}/runs`}>runs</Link>
+            </div>
+            {d.guardrail_feedback && <p className="small" style={{ marginBottom: 0 }}>Guardrail feedback: {d.guardrail_feedback}</p>}
           </div>
           <Form approval={d} workspaceId={id} onDone={a.reload} />
         </>

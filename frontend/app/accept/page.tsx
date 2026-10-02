@@ -4,6 +4,7 @@ import { Suspense, useState } from "react";
 import { api, errorMessage } from "@/lib/api";
 import { useAsync } from "@/lib/hooks";
 import { ErrorBox, Loading } from "@/components/ui";
+import { Logo } from "@/components/icons";
 
 function Accept() {
   const router = useRouter();
@@ -30,18 +31,24 @@ function Accept() {
   }
 
   return (
-    <main className="narrow">
-      <h1>Accept invitation</h1>
-      {!token && <ErrorBox message="This link has no invitation token." />}
-      {loading && <Loading />}
-      {error && !me && <p className="muted">Redirecting to sign in…</p>}
-      {me && token && (
-        <>
-          <p>Signed in as <strong>{me.email}</strong>. The invitation must have been sent to this email.</p>
-          <ErrorBox message={err} />
-          <button className="primary" onClick={accept} disabled={busy}>Join workspace</button>
-        </>
-      )}
+    <main className="auth">
+      <div className="auth-card">
+        <div className="auth-logo"><Logo size={64} /></div>
+        <h1>You&apos;re invited</h1>
+        <p className="tag">Join a CreatorOps workspace as an editor.</p>
+        <div className="auth-panel">
+          {!token && <ErrorBox message="This link has no invitation token." />}
+          {loading && <Loading rows={1} />}
+          {error && !me && <p className="muted">Redirecting to sign in…</p>}
+          {me && token && (
+            <>
+              <p style={{ marginTop: 0 }}>Signed in as <strong>{me.email}</strong>. The invitation must have been sent to this email.</p>
+              <ErrorBox message={err} />
+              <button className="primary block" onClick={accept} disabled={busy}>{busy ? "Joining…" : "Join workspace"}</button>
+            </>
+          )}
+        </div>
+      </div>
     </main>
   );
 }

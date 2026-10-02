@@ -2,7 +2,8 @@
 import { useState } from "react";
 import { api, errorMessage, type Invitation } from "@/lib/api";
 import { useAsync } from "@/lib/hooks";
-import { CopyButton, ErrorBox, fmtDate, Loading } from "@/components/ui";
+import { Avatar, CopyButton, ErrorBox, fmtDate, Loading, Notice, PageHeader } from "@/components/ui";
+import { Icon } from "@/components/icons";
 import { useWorkspace } from "@/components/workspace-context";
 
 export default function MembersPage() {
@@ -33,41 +34,41 @@ export default function MembersPage() {
   const link = invite ? `${window.location.origin}/accept?token=${invite.token}` : "";
   return (
     <>
-      <h1>Members</h1>
+      <PageHeader title="Members" subtitle="People who work on this channel with you." />
       <ErrorBox message={members.error} />
-      {members.loading && <Loading />}
-      {members.data && (
-        <div className="table-wrap">
-          <table>
-            <thead><tr><th>Name</th><th>Email</th><th>Role</th></tr></thead>
-            <tbody>
-              {members.data.map((m) => (
-                <tr key={m.user_id}><td>{m.name || "—"}</td><td>{m.email}</td><td><span className="badge">{m.role}</span></td></tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
+      {members.loading && <Loading rows={2} />}
+      <div className="list stagger">
+        {(members.data ?? []).map((m) => (
+          <div key={m.user_id} className="card list-item">
+            <Avatar name={m.name || m.email} size={42} />
+            <span className="grow" style={{ display: "grid", minWidth: 0 }}>
+              <strong style={{ overflow: "hidden", textOverflow: "ellipsis" }}>{m.name || m.email}</strong>
+              {m.name && <span className="muted small" style={{ overflow: "hidden", textOverflow: "ellipsis" }}>{m.email}</span>}
+            </span>
+            <span className="badge plain">{m.role}</span>
+          </div>
+        ))}
+      </div>
 
       {isOwner ? (
-        <form className="card" onSubmit={submit}>
-          <h2 style={{ marginTop: 0 }}>Invite an editor</h2>
-          <p className="muted small">Editors receive briefs and see activity, but cannot approve, start runs or change settings. There is no invitation email yet: share the link yourself.</p>
+        <form className="card pad-lg" style={{ marginTop: 20 }} onSubmit={submit}>
+          <h3>Invite an editor</h3>
+          <p className="muted small">Editors receive briefs and see activity, but can&apos;t approve, start runs or change settings. There&apos;s no invitation email yet: share the link yourself.</p>
           <label htmlFor="invite-email">Email</label>
-          <input id="invite-email" type="email" required value={email} onChange={(e) => setEmail(e.target.value)} />
+          <input id="invite-email" type="email" inputMode="email" autoComplete="off" required value={email} onChange={(e) => setEmail(e.target.value)} />
           <ErrorBox message={error} />
-          <p><button className="primary" disabled={busy || !email}>Create invitation</button></p>
+          <button className="primary block" style={{ marginTop: 14 }} disabled={busy || !email}><Icon name="mail" size={18} />{busy ? "Creating…" : "Create invitation"}</button>
         </form>
       ) : (
-        <div className="notice">Only the owner can invite members.</div>
+        <Notice icon="shield">Only the owner can invite members.</Notice>
       )}
 
       {invite && (
-        <div className="card warn" role="status">
+        <div className="card warn pad-lg" style={{ marginTop: 14 }} role="status">
           <strong>Invitation for {invite.email}</strong>
           <p className="muted small">Shown once. Expires {fmtDate(invite.expires_at)}. The invitee must sign in with exactly this email.</p>
           <div className="token">{link}</div>
-          <p className="row"><CopyButton text={link} label="Copy link" /><CopyButton text={invite.token} label="Copy token" /></p>
+          <div className="row"><CopyButton text={link} label="Copy link" /><CopyButton text={invite.token} label="Copy token" /></div>
         </div>
       )}
     </>

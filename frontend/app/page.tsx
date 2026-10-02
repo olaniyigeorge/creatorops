@@ -4,11 +4,13 @@ import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { api, errorMessage } from "@/lib/api";
 import { useAsync } from "@/lib/hooks";
-import { ErrorBox, Loading } from "@/components/ui";
+import { Avatar, EmptyState, ErrorBox, Loading } from "@/components/ui";
+import { Icon, Logo } from "@/components/icons";
+import { InstallPrompt } from "@/components/pwa";
 
 export default function Home() {
   const router = useRouter();
-  const { data: workspaces, error, loading, reload } = useAsync(() => api.workspaces(), []);
+  const { data: workspaces, error, loading } = useAsync(() => api.workspaces(), []);
   const [name, setName] = useState("");
   const [busy, setBusy] = useState(false);
   const [formError, setFormError] = useState<string>();
@@ -42,32 +44,47 @@ export default function Home() {
   }
 
   return (
-    <main className="container">
-      <div className="row between">
-        <h1>Your workspaces</h1>
-        <button onClick={async () => { await api.logout(); window.location.assign("/login"); }}>Sign out</button>
+    <main className="content" style={{ paddingBottom: 40 }}>
+      <div className="row between" style={{ marginBottom: 22, paddingTop: "var(--safe-t)" }}>
+        <span className="brand"><Logo size={32} />CreatorOps</span>
+        <button className="ghost sm" onClick={async () => { await api.logout(); window.location.assign("/login"); }}>
+          <Icon name="logout" size={16} />Sign out
+        </button>
       </div>
+
+      <div className="page-head">
+        <h1>Your channels</h1>
+        <p className="muted">Each channel gets its own isolated workspace.</p>
+      </div>
+
       <ErrorBox message={error} />
-      {loading && <Loading />}
+      {loading && <Loading rows={2} />}
       {workspaces && workspaces.length === 0 && (
-        <p className="muted">No workspaces yet. Create one to get started; each channel gets its own isolated workspace.</p>
+        <EmptyState icon="play" title="No workspaces yet">Create one below to start planning your channel.</EmptyState>
       )}
-      <div className="grid">
+      <div className="list stagger">
         {(workspaces ?? []).map((w) => (
-          <Link key={w.id} href={`/workspaces/${w.id}`} className="card">
-            <strong>{w.name}</strong>
-            <div className="muted small">{w.role}</div>
+          <Link key={w.id} href={`/workspaces/${w.id}`} className="card list-item">
+            <Avatar name={w.name} size={44} />
+            <span className="grow" style={{ display: "grid" }}>
+              <strong>{w.name}</strong>
+              <span className="muted small" style={{ textTransform: "capitalize" }}>{w.role}</span>
+            </span>
+            <Icon name="chevron" className="chev" />
           </Link>
         ))}
       </div>
-      <form className="card" onSubmit={create}>
-        <h2 style={{ marginTop: 0 }}>New workspace</h2>
-        <label htmlFor="ws-name">Channel / workspace name</label>
-        <input id="ws-name" type="text" required maxLength={200} value={name} onChange={(e) => setName(e.target.value)} />
+
+      <form className="card pad-lg accent" style={{ marginTop: 22 }} onSubmit={create}>
+        <h3>New workspace</h3>
+        <label htmlFor="ws-name" style={{ marginTop: 6 }}>Channel name</label>
+        <input id="ws-name" type="text" required maxLength={200} placeholder="e.g. Tech with Tola" value={name} onChange={(e) => setName(e.target.value)} />
         <ErrorBox message={formError} />
-        <p><button className="primary" disabled={busy || !name.trim()}>Create workspace</button></p>
+        <button className="primary block" style={{ marginTop: 14 }} disabled={busy || !name.trim()}>
+          <Icon name="plus" size={18} />{busy ? "Creating…" : "Create workspace"}
+        </button>
       </form>
-      <button className="small" onClick={reload}>Refresh</button>
+      <InstallPrompt />
     </main>
   );
 }

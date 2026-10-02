@@ -3,43 +3,53 @@ import Link from "next/link";
 import { useState } from "react";
 import { api } from "@/lib/api";
 import { useAsync } from "@/lib/hooks";
-import { ErrorBox, fmtDate, Loading, StatusBadge } from "@/components/ui";
+import { EmptyState, ErrorBox, fmtDate, Loading, Notice, PageHeader, StatusBadge } from "@/components/ui";
+import { Icon } from "@/components/icons";
 import { useWorkspace } from "@/components/workspace-context";
+
+const FILTERS = [["pending", "Pending"], ["approved", "Approved"], ["rejected", "Rejected"], ["all", "All"]] as const;
 
 export default function ApprovalsPage() {
   const { workspace, isOwner } = useWorkspace();
   const id = workspace.id;
-  const [filter, setFilter] = useState("pending");
+  const [filter, setFilter] = useState<string>("pending");
   const list = useAsync(() => (isOwner ? api.approvals(id, filter === "all" ? undefined : filter) : Promise.resolve([])), [id, isOwner, filter]);
 
-  if (!isOwner) return <><h1>Approvals</h1><div className="notice">Only the workspace owner can review approvals.</div></>;
+  if (!isOwner) return <><PageHeader title="Approvals" /><Notice icon="shield">Only the workspace owner can review approvals.</Notice></>;
   return (
     <>
-      <div className="row between">
-        <h1>Approvals</h1>
-        <div className="row">
-          <label htmlFor="filter" className="small" style={{ margin: 0 }}>Show</label>
-          <select id="filter" style={{ width: "auto" }} value={filter} onChange={(e) => setFilter(e.target.value)}>
-            <option value="pending">Pending</option>
-            <option value="approved">Approved</option>
-            <option value="rejected">Rejected</option>
-            <option value="all">All</option>
-          </select>
-          <button onClick={list.reload}>Refresh</button>
-        </div>
+      <PageHeader
+        title="Approvals"
+        subtitle="Decisions the agent needs from you before it continues."
+        actions={<button className="sm" onClick={list.reload}><Icon name="refresh" size={16} />Refresh</button>}
+      />
+      <div className="seg" role="group" aria-label="Filter" style={{ marginBottom: 16 }}>
+        {FILTERS.map(([v, label]) => (
+          <button key={v} aria-pressed={filter === v} onClick={() => setFilter(v)}>{label}</button>
+        ))}
       </div>
       <ErrorBox message={list.error} />
       {list.loading && <Loading />}
-      {list.data && list.data.length === 0 && <p className="muted">Nothing {filter === "all" ? "here" : filter}.</p>}
-      {(list.data ?? []).map((a) => (
-        <Link key={a.id} href={`/workspaces/${id}/approvals/${a.id}`} className="card" style={{ display: "block", color: "inherit" }}>
-          <div className="row between">
-            <strong>{a.action.summary}</strong>
+      {list.data && list.data.length === 0 && (
+        <EmptyState icon="checkCircle" title={filter === "pending" ? "All caught up" : `Nothing ${filter === "all" ? "here" : filter}`}>
+          {filter === "pending" ? "When the agent needs a decision, it will appear here." : "Nothing matches this filter."}
+        </EmptyState>
+      )}
+      <div className="list stagger">
+        {(list.data ?? []).map((a) => (
+          <Link key={a.id} href={`/workspaces/${id}/approvals/${a.id}`} className="card list-item">
+            <span className="grow">
+              <span className="card-title clamp">{a.action.summary}</span>
+              <span className="meta">
+                <span>{a.action.type.replace(/_/g, " ")}</span><span className="sep">·</span><span>{fmtDate(a.created_at)}</span>
+              </span>
+              {a.action.gate_reason && <span className="muted small" style={{ display: "block", marginTop: 4 }}>{a.action.gate_reason}</span>}
+            </span>
             <StatusBadge status={a.status} />
-          </div>
-          <p className="muted small" style={{ marginBottom: 0 }}>{a.action.type} · asked {fmtDate(a.created_at)}{a.action.gate_reason ? ` · ${a.action.gate_reason}` : ""}</p>
-        </Link>
-      ))}
+            <Icon name="chevron" className="chev" size={18} />
+          </Link>
+        ))}
+      </div>
     </>
   );
 }

@@ -4,7 +4,8 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { api, errorMessage } from "@/lib/api";
 import { useAsync } from "@/lib/hooks";
-import { ErrorBox, fmtDate, Loading, StatusBadge } from "@/components/ui";
+import { EmptyState, ErrorBox, fmtDate, Loading, Notice, PageHeader, StatusBadge } from "@/components/ui";
+import { Icon } from "@/components/icons";
 import { useWorkspace } from "@/components/workspace-context";
 
 export default function RunsPage() {
@@ -34,37 +35,33 @@ export default function RunsPage() {
   const onboarded = !!onboarding.data;
   return (
     <>
-      <div className="row between">
-        <h1>Runs</h1>
-        {isOwner && (
+      <PageHeader
+        title="Runs"
+        subtitle="Everything the agent has worked on."
+        actions={isOwner && (
           <button className="primary" onClick={start} disabled={busy || !onboarded} title={onboarded ? "" : "Complete onboarding first"}>
-            Start strategy_onboarding
+            <Icon name="bolt" size={18} />{busy ? "Starting…" : "Run strategy"}
           </button>
         )}
-      </div>
+      />
       {isOwner && !onboarding.loading && !onboarded && (
-        <div className="notice">Complete <Link href={`/workspaces/${id}/onboarding`}>onboarding</Link> before running the strategy workflow.</div>
+        <Notice icon="sparkle" tone="warn">Complete <Link href={`/workspaces/${id}/onboarding`}>onboarding</Link> before running the strategy workflow.</Notice>
       )}
       <ErrorBox message={error ?? runs.error} />
       {runs.loading && <Loading />}
-      {runs.data && runs.data.length === 0 && <p className="muted">No runs yet.</p>}
-      {runs.data && runs.data.length > 0 && (
-        <div className="table-wrap">
-          <table>
-            <thead><tr><th>Workflow</th><th>Status</th><th>Started</th><th>Finished</th></tr></thead>
-            <tbody>
-              {runs.data.map((r) => (
-                <tr key={r.id}>
-                  <td><Link href={`/workspaces/${id}/runs/${r.id}`}>{r.workflow}</Link></td>
-                  <td><StatusBadge status={r.status} /></td>
-                  <td>{fmtDate(r.created_at)}</td>
-                  <td>{fmtDate(r.finished_at)}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
+      {runs.data && runs.data.length === 0 && <EmptyState icon="bolt" title="No runs yet">Runs appear here as soon as the agent starts working.</EmptyState>}
+      <div className="list stagger">
+        {(runs.data ?? []).map((r) => (
+          <Link key={r.id} href={`/workspaces/${id}/runs/${r.id}`} className="card list-item">
+            <span className="grow">
+              <span className="card-title">{r.workflow.replace(/_/g, " ")}</span>
+              <span className="meta">Started {fmtDate(r.created_at)}{r.finished_at && <><span className="sep">·</span>Finished {fmtDate(r.finished_at)}</>}</span>
+            </span>
+            <StatusBadge status={r.status} />
+            <Icon name="chevron" className="chev" size={18} />
+          </Link>
+        ))}
+      </div>
     </>
   );
 }
