@@ -77,3 +77,7 @@ The Postgres run **drops all tables**, so the database name must contain `test` 
 ## Deployment
 
 Backend: Render blueprint in [`render.yaml`](render.yaml) (API, worker, one beat, Redis; migrations run as a pre-deploy command). Frontend: Vercel, with `/api` proxied to the backend so the session cookie stays same-origin. `docker-compose.yml` is for local development only and contains no database. Details and Supabase, Cloudinary and Google OAuth notes are in `docs/architecture.md` section 8.
+
+## License
+
+Proprietary. Copyright (c) 2026 Olaniyi George. All rights reserved; see [`LICENSE`](LICENSE). No permission is granted to use, copy, modify or distribute this software without a written agreement.
